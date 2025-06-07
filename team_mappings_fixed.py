@@ -1,14 +1,9 @@
+# team_mappings_fixed.py
 import os
-import logging
-from typing import Dict, List
+from config import LOGO_DIR # Импортируем путь к логотипам из вашего конфига
 
-# Настройка логгера
-logger = logging.getLogger(__name__)
-
-# Базовый путь к логотипам
-LOGOS_FOLDER = r"C:\1\logos"
-
-# Маппинги команд по лигам
+# --- Шаг 1: Ваш большой словарь с ручными псевдонимами ---
+# Он содержит все ваши наработки по разным названиям команд.
 LEAGUE_TEAMS_MAPPINGS = {
     "Austria - Bundesliga": {
         "рапид": "Rapid Vienna.png",
@@ -926,91 +921,58 @@ LEAGUE_TEAMS_MAPPINGS = {
     },
 }
 
-def generate_full_team_mappings() -> Dict[str, str]:
+
+
+# --- Шаг 2: Функция, которая "разворачивает" ваш словарь в плоский ---
+def get_predefined_mappings():
     """
-    Генерирует полную карту соответствий названий команд и файлов с логотипами.
-    
-    Returns:
-        Словарь с маппингами вида {team_name: logo_file}
+    Преобразует ваш вложенный словарь LEAGUE_TEAMS_MAPPINGS в один общий.
     """
     full_mappings = {}
     for league, teams in LEAGUE_TEAMS_MAPPINGS.items():
         for team_name, logo_file in teams.items():
             full_mappings[team_name.lower()] = logo_file
+    print(f"Загружено {len(full_mappings)} предопределенных псевдонимов команд.")
     return full_mappings
 
-def get_league_teams(league_folder: str) -> List[str]:
-    """
-    Получает список команд из указанной лиги.
-    
-    Args:
-        league_folder: Название папки лиги (например, 'Spain - LaLiga')
-    
-    Returns:
-        Список названий команд (без расширений файлов)
-    """
-    teams = []
-    league_path = os.path.join(LOGOS_FOLDER, league_folder)
-    try:
-        if os.path.exists(league_path):
-            for filename in os.listdir(league_path):
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    team_name = os.path.splitext(filename)[0]
-                    teams.append(team_name)
-        else:
-            logger.warning(f"Папка лиги {league_path} не найдена")
-    except Exception as e:
-        logger.error(f"Ошибка при получении списка команд из {league_folder}: {e}")
-    return teams
 
-def load_team_mappings_from_logos() -> Dict[str, str]:
+# --- Шаг 3: Функция автоматического сканирования папки с логотипами ---
+def get_auto_mappings_from_folder():
     """
-    Загружает маппинги из папки с логотипами.
-    
-    Returns:
-        Словарь с маппингами вида {team_name: logo_file}
+    Сканирует папку LOGO_DIR и создает сопоставления на основе имен файлов.
+    Например, для файла "Real Madrid.png" создается ключ "real madrid".
     """
-    mappings = {}
-    try:
-        for filename in os.listdir(LOGOS_FOLDER):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                team_name = os.path.splitext(filename)[0]
-                # Убираем префикс лиги, если он есть
-                if '_' in team_name:
-                    team_name = team_name.split('_', 1)[1]
-                mappings[team_name.lower()] = filename
-                # Добавляем варианты без префиксов/суффиксов
-                parts = team_name.split()
-                if len(parts) > 1:
-                    if parts[0].lower() in ['fc', 'ac', 'sc', 'sk']:
-                        mappings[' '.join(parts[1:]).lower()] = filename
-                    if parts[-1].lower() in ['fc', 'ac', 'sc', 'sk', 'united', 'city']:
-                        mappings[' '.join(parts[:-1]).lower()] = filename
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке маппингов команд: {e}")
-    return mappings
+    auto_mappings = {}
+    if not os.path.isdir(LOGO_DIR):
+        print(f"ОШИБКА: Папка с логотипами не найдена по пути: {LOGO_DIR}")
+        return auto_mappings
+        
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
+    for filename in os.listdir(LOGO_DIR):
+        if filename.lower().endswith(valid_extensions):
+            # Ключ: имя файла без расширения, в нижнем регистре.
+            team_name_key = os.path.splitext(filename)[0].lower()
+            auto_mappings[team_name_key] = filename
+            
+    print(f"Найдено {len(auto_mappings)} логотипов при автоматическом сканировании папки.")
+    return auto_mappings
 
-def get_extended_team_mappings() -> Dict[str, str]:
-    """
-    Получает расширенные маппинги команд, объединяя предопределенные и автоматически сгенерированные.
-    
-    Returns:
-        Словарь с полными маппингами всех команд
-    """
-    predefined_mappings = generate_full_team_mappings()
-    auto_mappings = load_team_mappings_from_logos()
-    # Предопределенные маппинги имеют приоритет
-    combined_mappings = {**auto_mappings, **predefined_mappings}
-    return combined_mappings
 
-def get_available_leagues() -> List[str]:
+# --- Шаг 4: Объединение всех маппингов в итоговый словарь ---
+def create_final_mappings():
     """
-    Возвращает список доступных лиг из маппингов.
+    Объединяет автоматически сгенерированные и предопределенные маппинги.
+    Предопределенные (ручные) имеют приоритет в случае совпадения ключей.
+    """
+    auto_generated = get_auto_mappings_from_folder()
+    predefined = get_predefined_mappings()
     
-    Returns:
-        Список названий лиг
-    """
-    return sorted(LEAGUE_TEAMS_MAPPINGS.keys())
+    # Сначала идут автоматически найденные, затем предопределенные.
+    # Если ключ совпадет, значение из predefined перезапишет автоматическое.
+    final_mappings = {**auto_generated, **predefined}
+    
+    print(f"Сформирован итоговый словарь TEAM_MAPPINGS из {len(final_mappings)} уникальных записей.")
+    return final_mappings
 
-# Создаем основной словарь маппингов
-TEAM_MAPPINGS = generate_full_team_mappings() 
+# --- Итоговый словарь, который будет импортироваться в другие модули ---
+TEAM_MAPPINGS = create_final_mappings()
