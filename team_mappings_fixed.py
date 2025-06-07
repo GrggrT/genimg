@@ -1,8 +1,8 @@
 # team_mappings_fixed.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 import os
-from config import LOGO_DIR
+from config import LOGO_DIR # Импортируем путь к логотипам из вашего конфига
 
-# Шаг 1: Ваш большой словарь с ручными псевдонимами.
+# --- Шаг 1: Ваш большой словарь с ручными псевдонимами ---
 # Он содержит все ваши наработки по разным названиям команд.
 LEAGUE_TEAMS_MAPPINGS = {
     "Austria - Bundesliga": {
@@ -953,9 +953,13 @@ def create_final_mappings():
     """Объединяет все маппинги. Ручные настройки имеют приоритет."""
     auto_generated = get_auto_mappings_from_folder()
     predefined = get_predefined_mappings()
+    
+    # Сначала идут автоматически найденные, затем предопределенные.
+    # Если ключ совпадет, значение из predefined перезапишет автоматическое.
     final_mappings = {**auto_generated, **predefined}
+    
     print(f"Сформирован итоговый словарь TEAM_MAPPINGS из {len(final_mappings)} записей.")
     return final_mappings
 
-# Итоговый словарь, который будет импортироваться в другие модули
+# --- Итоговый словарь, который будет импортироваться в другие модули ---
 TEAM_MAPPINGS = create_final_mappings()
