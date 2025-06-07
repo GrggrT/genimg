@@ -1,13 +1,11 @@
 # main.py
 # Главный файл для запуска приложения.
-# Содержит основную логику управления процессом генерации.
-
 import os
 from tkinter import messagebox
 import gui
 import image_generator
 from translator import TranslatorAPI
-from config import LOGO_DIR, TARGET_LANGUAGES, SOURCE_LANGUAGE_CODE
+from config import LOGO_DIR, TARGET_LANGUAGES
 
 def start_generation_process(all_posts_data, gui_root_window):
     """
@@ -16,14 +14,14 @@ def start_generation_process(all_posts_data, gui_root_window):
     if not all_posts_data:
         messagebox.showerror("Ошибка", "Список постов для генерации пуст!")
         return
-
-    gui_root_window.destroy() # Закрываем GUI перед началом долгого процесса
+    gui_root_window.destroy() # Закрываем GUI
+    
     translator = TranslatorAPI() # Инициализируем переводчик один раз
-
+    
     for post_idx, original_post_data in enumerate(all_posts_data):
         post_type = original_post_data["post_type"]
         bg_path = original_post_data.get("background_path", "")
-
+        
         for lang_code in TARGET_LANGUAGES:
             print(f"\n--- Генерация поста {post_idx+1} ({post_type}), Язык: {lang_code} ---")
             
@@ -63,7 +61,6 @@ def start_generation_process(all_posts_data, gui_root_window):
                 }
                 
                 output_filename = f'express_post_{post_idx+1}_{lang_code.lower()}.jpg'
-                # Вызываем функцию-заглушку для отрисовки экспресса
                 image_generator.create_express_image(translated_content, bg_path, output_filename)
                 
     print("\n--- Генерация всех изображений завершена! ---")
@@ -79,5 +76,4 @@ if __name__ == "__main__":
             if not messagebox.askyesno("Продолжить?", "Продолжить без возможности использовать логотипы?"):
                 exit()
     
-    # Запускаем GUI и передаем ему callback-функцию для старта генерации
     gui.create_main_gui(on_generate_callback=start_generation_process)

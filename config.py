@@ -2,7 +2,6 @@
 # Файл для хранения всех настроек и констант проекта.
 
 # --- Пути к ресурсам ---
-# Укажите абсолютные пути для надежности
 LOGO_DIR = r"C:\1\logos"
 FONT_PATH = r"C:\Windows\Fonts\arial.ttf"
 
@@ -18,11 +17,11 @@ DEEPL_TARGET_LANG_MAP = {
 }
 
 # --- Настройки GUI и ограничений ---
-MAX_MATCHES_IN_LIST = 10  # Макс. постов (одиночных или экспрессов) в списке на генерацию
-MAX_LEGS_IN_EXPRESS = 10  # Макс. событий в одном экспрессе
+MAX_POSTS_IN_LIST = 10
+MAX_LEGS_IN_EXPRESS = 10
 
 # --- Настройки изображений ---
 IMAGE_SIZE = (1280, 1280)
-DEFAULT_BACKGROUND_COLOR_1 = (28, 37, 38) # Начальный цвет градиента
-DEFAULT_BACKGROUND_COLOR_2 = (0, 0, 0)   # Конечный цвет градиента
+DEFAULT_BACKGROUND_COLOR_1 = (28, 37, 38)
+DEFAULT_BACKGROUND_COLOR_2 = (0, 0, 0)
 IMAGE_QUALITY = 90

@@ -1,9 +1,9 @@
 # team_mappings_fixed.py
 import os
-from config import LOGO_DIR # Импортируем путь к логотипам из вашего конфига
+from config import LOGO_DIR
 
-# --- Шаг 1: Ваш большой словарь с ручными псевдонимами ---
-# Он содержит все ваши наработки по разным названиям команд.
+# Шаг 1: Ваш большой словарь с ручными псевдонимами.
+# Убедитесь, что он здесь полный.
 LEAGUE_TEAMS_MAPPINGS = {
     "Austria - Bundesliga": {
         "рапид": "Rapid Vienna.png",
@@ -923,11 +923,8 @@ LEAGUE_TEAMS_MAPPINGS = {
 
 
 
-# --- Шаг 2: Функция, которая "разворачивает" ваш словарь в плоский ---
 def get_predefined_mappings():
-    """
-    Преобразует ваш вложенный словарь LEAGUE_TEAMS_MAPPINGS в один общий.
-    """
+    """Преобразует ваш вложенный словарь в один плоский."""
     full_mappings = {}
     for league, teams in LEAGUE_TEAMS_MAPPINGS.items():
         for team_name, logo_file in teams.items():
@@ -935,44 +932,28 @@ def get_predefined_mappings():
     print(f"Загружено {len(full_mappings)} предопределенных псевдонимов команд.")
     return full_mappings
 
-
-# --- Шаг 3: Функция автоматического сканирования папки с логотипами ---
 def get_auto_mappings_from_folder():
-    """
-    Сканирует папку LOGO_DIR и создает сопоставления на основе имен файлов.
-    Например, для файла "Real Madrid.png" создается ключ "real madrid".
-    """
+    """Сканирует папку LOGO_DIR и создает сопоставления по именам файлов."""
     auto_mappings = {}
     if not os.path.isdir(LOGO_DIR):
-        print(f"ОШИБКА: Папка с логотипами не найдена по пути: {LOGO_DIR}")
+        print(f"ОШИБКА: Папка с логотипами не найдена: {LOGO_DIR}")
         return auto_mappings
-        
     valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
     for filename in os.listdir(LOGO_DIR):
         if filename.lower().endswith(valid_extensions):
-            # Ключ: имя файла без расширения, в нижнем регистре.
             team_name_key = os.path.splitext(filename)[0].lower()
-            auto_mappings[team_name_key] = filename
-            
-    print(f"Найдено {len(auto_mappings)} логотипов при автоматическом сканировании папки.")
+            if team_name_key not in auto_mappings:
+                auto_mappings[team_name_key] = filename
+    print(f"Найдено {len(auto_mappings)} логотипов при сканировании папки.")
     return auto_mappings
 
-
-# --- Шаг 4: Объединение всех маппингов в итоговый словарь ---
 def create_final_mappings():
-    """
-    Объединяет автоматически сгенерированные и предопределенные маппинги.
-    Предопределенные (ручные) имеют приоритет в случае совпадения ключей.
-    """
+    """Объединяет все маппинги. Ручные настройки имеют приоритет."""
     auto_generated = get_auto_mappings_from_folder()
     predefined = get_predefined_mappings()
-    
-    # Сначала идут автоматически найденные, затем предопределенные.
-    # Если ключ совпадет, значение из predefined перезапишет автоматическое.
     final_mappings = {**auto_generated, **predefined}
-    
-    print(f"Сформирован итоговый словарь TEAM_MAPPINGS из {len(final_mappings)} уникальных записей.")
+    print(f"Сформирован итоговый словарь TEAM_MAPPINGS из {len(final_mappings)} записей.")
     return final_mappings
 
-# --- Итоговый словарь, который будет импортироваться в другие модули ---
+# Итоговый словарь, который будет импортироваться в другие модули
 TEAM_MAPPINGS = create_final_mappings()
