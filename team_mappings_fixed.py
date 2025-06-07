@@ -942,6 +942,7 @@ def get_auto_mappings_from_folder():
     valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
     for filename in os.listdir(LOGO_DIR):
         if filename.lower().endswith(valid_extensions):
+            # Ключ: имя файла без расширения, в нижнем регистре.
             team_name_key = os.path.splitext(filename)[0].lower()
             if team_name_key not in auto_mappings:
                 auto_mappings[team_name_key] = filename
