@@ -1,9 +1,9 @@
-# team_mappings_fixed.py
+# team_mappings_fixed.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 import os
 from config import LOGO_DIR
 
 # Шаг 1: Ваш большой словарь с ручными псевдонимами.
-# Убедитесь, что он здесь полный.
+# Он содержит все ваши наработки по разным названиям команд.
 LEAGUE_TEAMS_MAPPINGS = {
     "Austria - Bundesliga": {
         "рапид": "Rapid Vienna.png",
@@ -924,7 +924,7 @@ LEAGUE_TEAMS_MAPPINGS = {
 
 
 def get_predefined_mappings():
-    """Преобразует ваш вложенный словарь в один плоский."""
+    """Преобразует ваш вложенный словарь LEAGUE_TEAMS_MAPPINGS в один плоский."""
     full_mappings = {}
     for league, teams in LEAGUE_TEAMS_MAPPINGS.items():
         for team_name, logo_file in teams.items():
@@ -933,18 +933,20 @@ def get_predefined_mappings():
     return full_mappings
 
 def get_auto_mappings_from_folder():
-    """Сканирует папку LOGO_DIR и создает сопоставления по именам файлов."""
+    """Сканирует папку LOGO_DIR и создает сопоставления на основе имен файлов."""
     auto_mappings = {}
     if not os.path.isdir(LOGO_DIR):
-        print(f"ОШИБКА: Папка с логотипами не найдена: {LOGO_DIR}")
+        print(f"ОШИБКА: Папка с логотипами не найдена по пути: {LOGO_DIR}")
         return auto_mappings
+        
     valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
     for filename in os.listdir(LOGO_DIR):
         if filename.lower().endswith(valid_extensions):
             team_name_key = os.path.splitext(filename)[0].lower()
             if team_name_key not in auto_mappings:
                 auto_mappings[team_name_key] = filename
-    print(f"Найдено {len(auto_mappings)} логотипов при сканировании папки.")
+            
+    print(f"Найдено {len(auto_mappings)} логотипов при автоматическом сканировании папки.")
     return auto_mappings
 
 def create_final_mappings():
