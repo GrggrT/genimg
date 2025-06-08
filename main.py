@@ -6,7 +6,7 @@ import os
 from tkinter import messagebox
 import gui
 import image_generator
-from translator import Translator
+from translator import TranslatorAPI # ИСПРАВЛЕНИЕ: Импортируем класс с правильным именем
 from config import LOGO_DIR, TARGET_LANGUAGES, SOURCE_LANGUAGE_CODE
 
 def start_generation_process(all_posts_data, gui_root_window):
@@ -19,8 +19,8 @@ def start_generation_process(all_posts_data, gui_root_window):
 
     gui_root_window.destroy() # Закрываем GUI перед началом долгого процесса
     
-    # Инициализируем наш класс переводчика
-    translator_instance = Translator() 
+    # ИСПРАВЛЕНИЕ: Создаем объект класса с правильным именем
+    translator_instance = TranslatorAPI() 
 
     for post_idx, original_post_data in enumerate(all_posts_data):
         post_type = original_post_data["post_type"]
@@ -32,40 +32,36 @@ def start_generation_process(all_posts_data, gui_root_window):
             # --- Одиночный прогноз ---
             if post_type == "Одиночный прогноз":
                 translated_content = {
-                    "team1": {"name": original_post_data["team1"]["name"], "logo_ref": original_post_data["team1"]["logo_ref"]},
-                    "team2": {"name": original_post_data["team2"]["name"], "logo_ref": original_post_data["team2"]["logo_ref"]},
+                    "team1": {"name": original_post_data["team1"]["name"], "logo": original_post_data["team1"]["logo_ref"]},
+                    "team2": {"name": original_post_data["team2"]["name"], "logo": original_post_data["team2"]["logo_ref"]},
                     "vs_text": original_post_data["vs_text"],
                     "coefficient": original_post_data["coefficient"],
                     "prediction": original_post_data["prediction"],
                     "date": original_post_data["date"],
                     "background_path": bg_path
                 }
-                translated_content["team1"]["name"] = translator_instance.translate_text(original_post_data["team1"]["name"], lang_code)
-                translated_content["team2"]["name"] = translator_instance.translate_text(original_post_data["team2"]["name"], lang_code)
-                translated_content["vs_text"] = translator_instance.translate_text(original_post_data["vs_text"], lang_code)
-                translated_content["prediction"] = translator_instance.translate_text(original_post_data["prediction"], lang_code)
+                translated_content["team1"]["name"] = translator_instance.translate(original_post_data["team1"]["name"], lang_code)
+                translated_content["team2"]["name"] = translator_instance.translate(original_post_data["team2"]["name"], lang_code)
+                translated_content["vs_text"] = translator_instance.translate(original_post_data["vs_text"], lang_code)
+                translated_content["prediction"] = translator_instance.translate(original_post_data["prediction"], lang_code)
                 
                 output_filename = f'single_post_{post_idx+1}_{lang_code.lower()}.jpg'
                 
-                # ИСПРАВЛЕНИЕ: Вызываем функцию с правильным именем
-                image_generator.draw_single_match_post(
-                    post_data=translated_content,
-                    output_folder=os.getcwd(), # Сохраняем в текущую папку
-                    filename=output_filename
-                )
+                # Вызываем функцию с правильным именем, которое уже было исправлено ранее
+                image_generator.create_single_image(translated_content, bg_path, output_filename)
 
             # --- Экспресс ---
             elif post_type == "Экспресс":
                 translated_legs = []
                 for leg in original_post_data["legs"]:
                     translated_leg = leg.copy()
-                    translated_leg["team1_name"] = translator_instance.translate_text(leg["team1_name"], lang_code)
-                    translated_leg["team2_name"] = translator_instance.translate_text(leg["team2_name"], lang_code)
-                    translated_leg["bet_text"] = translator_instance.translate_text(leg["bet_text"], lang_code)
+                    translated_leg["team1_name"] = translator_instance.translate(leg["team1_name"], lang_code)
+                    translated_leg["team2_name"] = translator_instance.translate(leg["team2_name"], lang_code)
+                    translated_leg["bet_text"] = translator_instance.translate(leg["bet_text"], lang_code)
                     translated_legs.append(translated_leg)
                 
                 translated_content = {
-                    "express_title": translator_instance.translate_text(original_post_data["express_title"], lang_code),
+                    "express_title": translator_instance.translate(original_post_data["express_title"], lang_code),
                     "total_coefficient": original_post_data["total_coefficient"],
                     "date": original_post_data["date"],
                     "legs": translated_legs,
@@ -74,12 +70,8 @@ def start_generation_process(all_posts_data, gui_root_window):
                 
                 output_filename = f'express_post_{post_idx+1}_{lang_code.lower()}.jpg'
                 
-                # ИСПРАВЛЕНИЕ: Вызываем функцию с правильным именем
-                image_generator.draw_express_post(
-                    post_data=translated_content, 
-                    output_folder=os.getcwd(),
-                    filename=output_filename
-                )
+                # Вызываем функцию-заглушку для отрисовки экспресса
+                image_generator.create_express_image(translated_content, bg_path, output_filename)
                 
     print("\n--- Генерация всех изображений завершена! ---")
     messagebox.showinfo("Завершено", "Генерация всех изображений успешно завершена!")
@@ -96,5 +88,4 @@ if __name__ == "__main__":
                 exit()
     
     # Запускаем GUI и передаем ему callback-функцию для старта генерации
-    app = gui.MatchGeneratorGUI()
-    app.run(on_generate_callback=start_generation_process)
+    gui.create_main_gui(on_generate_callback=start_generation_process)
