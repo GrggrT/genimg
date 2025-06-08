@@ -1,225 +1,152 @@
-# image_generator.py
-from PIL import Image, ImageDraw, ImageFont
+# image_generator.py (ФИНАЛЬНАЯ ВЕРСИЯ С ИСПРАВЛЕННЫМ ДИЗАЙНОМ)
 import os
-from config import FONT_PATH, IMAGE_SIZE, DEFAULT_BACKGROUND_COLOR_1, DEFAULT_BACKGROUND_COLOR_2, IMAGE_QUALITY
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from config import IMAGE_SIZE, DEFAULT_BACKGROUND_COLOR_1, DEFAULT_BACKGROUND_COLOR_2, IMAGE_QUALITY, FONT_PATH
 
-# --- Вспомогательные функции отрисовки ---
-
-def get_font_for_cell(draw_context, text_to_fit, target_width, target_height, initial_font_size=40, min_font_size=10, max_lines=3, line_spacing_ratio=1.2):
-    """
-    Подбирает оптимальный шрифт, чтобы текст поместился в заданные рамки.
-    Эта версия исправляет ошибку UnboundLocalError.
-    """
-    # **ИСПРАВЛЕНИЕ:** Переменная 'current_font_size' инициализируется здесь, до начала цикла.
-    # Это гарантирует, что она всегда имеет значение.
-    current_font_size = initial_font_size
-    best_font = None
-    best_lines = [text_to_fit]
-
-    if not text_to_fit or not text_to_fit.strip():
+def open_image_safely(path, default_size=(100, 100)):
+    """Безопасно открывает изображение, возвращая плейсхолдер при ошибке."""
+    if path and os.path.exists(path):
         try:
-            return ImageFont.truetype(FONT_PATH, min_font_size), [""]
-        except IOError:
-            return ImageFont.load_default(), [""]
+            return Image.open(path).convert("RGBA")
+        except Exception as e:
+            print(f"Ошибка при открытии изображения {path}: {e}")
+    return Image.new("RGBA", default_size, (200, 200, 200, 50)) # Полупрозрачный серый квадрат
 
-    while current_font_size >= min_font_size:
-        try:
-            current_font = ImageFont.truetype(FONT_PATH, current_font_size)
-        except IOError:
-            if current_font_size == min_font_size:
-                return ImageFont.load_default(), best_lines
-            current_font_size -= 1
-            continue
-
-        words = text_to_fit.split()
-        lines = []
-        current_line_text = ""
-
-        for word in words:
-            test_line = current_line_text + (" " if current_line_text else "") + word
-            try:
-                line_width = draw_context.textlength(test_line, font=current_font)
-            except AttributeError:
-                bbox_fallback = draw_context.textbbox((0,0), test_line, font=current_font)
-                line_width = bbox_fallback[2] - bbox_fallback[0]
-
-            if line_width <= target_width:
-                current_line_text = test_line
-            else:
-                if current_line_text:
-                    lines.append(current_line_text)
-                current_line_text = word
-        
-        if current_line_text:
-            lines.append(current_line_text)
-        if not lines and text_to_fit:
-            lines = [text_to_fit]
-
-        actual_total_height = 0
-        if lines:
-            spacing_val = int(current_font_size * (line_spacing_ratio - 1.0))
-            block_bbox = draw_context.multiline_textbbox((0,0), "\n".join(lines), font=current_font, spacing=spacing_val)
-            actual_total_height = block_bbox[3] - block_bbox[1]
-
-        if len(lines) <= max_lines and actual_total_height <= target_height:
-            return current_font, lines
-
-        if current_font_size == min_font_size:
-            best_font = current_font
-            best_lines = lines
-            if len(lines) > max_lines or actual_total_height > target_height:
-                 print(f"Предупреждение: Текст '{text_to_fit[:30]}...' не вписался идеально.")
-            break
-
-        current_font_size -= 1
-        best_font = current_font
-        best_lines = lines
-
-    return best_font or ImageFont.load_default(), best_lines
-
-
-def draw_text_with_effects(draw, text_block, center_xy, font, color, shadow_color, stroke_color, is_multiline=False):
-    x, y = center_xy
-    align = "center" if is_multiline else "left"
-    spacing = int(font.size * 0.2)
-    
-    if is_multiline:
-        bbox = draw.multiline_textbbox((0,0), text_block, font=font, spacing=spacing, align=align)
-    else:
-        bbox = draw.textbbox((0,0), text_block, font=font)
-    
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    pos = (x - text_w / 2, y - text_h / 2)
-    
-    if shadow_color:
-        if is_multiline:
-            draw.multiline_text((pos[0] + 2, pos[1] + 2), text_block, font=font, fill=shadow_color, spacing=spacing, align=align)
+def draw_single_match_post(post_data, output_folder, filename):
+    """Генерирует изображение для одиночного прогноза."""
+    try:
+        # --- ФОН ---
+        if post_data.get("background_path") and os.path.exists(post_data["background_path"]):
+            base_img = Image.open(post_data["background_path"]).convert("RGBA").resize(IMAGE_SIZE)
         else:
-            draw.text((pos[0] + 2, pos[1] + 2), text_block, font=font, fill=shadow_color)
-    
-    if is_multiline:
-        draw.multiline_text(pos, text_block, font=font, fill=color, stroke_width=1, stroke_fill=stroke_color, spacing=spacing, align=align)
-    else:
-        draw.text(pos, text_block, font=font, fill=color, stroke_width=1, stroke_fill=stroke_color)
-
-def create_gradient_bg(width, height, color1, color2):
-    image = Image.new('RGB', (width, height)); draw = ImageDraw.Draw(image)
-    r1,g1,b1=color1; r2,g2,b2=color2
-    for i in range(height):
-        r = int(r1 + (r2-r1)*i/height); g = int(g1 + (g2-g1)*i/height); b = int(b1 + (b2-b1)*i/height)
-        draw.line([(0,i), (width,i)], fill=(r,g,b))
-    return image
-
-# --- Генератор для одиночного поста ---
-def create_single_image(match_content, background_path, output_filename):
-    image = None
-    if background_path and os.path.exists(background_path):
-        try:
-            image = Image.open(background_path).convert("RGB").resize(IMAGE_SIZE, Image.Resampling.LANCZOS)
-        except Exception as e: print(f"Ошибка фона: {e}")
-    if image is None:
-        image = create_gradient_bg(IMAGE_SIZE[0], IMAGE_SIZE[1], DEFAULT_BACKGROUND_COLOR_1, DEFAULT_BACKGROUND_COLOR_2)
-    
-    draw = ImageDraw.Draw(image); padding = 15
-    user_defined_cells = [
-        {'type': 'team_name',   'x': 350, 'y': 200, 'w': 250, 'h': 70},
-        {'type': 'team_name',   'x': 950, 'y': 200, 'w': 250, 'h': 70},
-        {'type': 'logo',        'x': 350, 'y': 350, 'w': 200, 'h': 220},
-        {'type': 'logo',        'x': 950, 'y': 350, 'w': 200, 'h': 220},
-        {'type': 'vs_text',     'x': 650, 'y': 350, 'w': 100, 'h': 100},
-        {'type': 'coefficient', 'x': 650, 'y': 550, 'w': 150, 'h': 150},
-        {'type': 'prediction',  'x': 650, 'y': 870, 'w': 900, 'h': 300},
-        {'type': 'date',        'x': 650, 'y': 1150,'w': 200, 'h': 40}, # Увеличил размеры для даты для лучшей читаемости
-    ]
-    content_map = [match_content["team1"]["name"], match_content["team2"]["name"], match_content["team1"]["logo"], match_content["team2"]["logo"], match_content["vs_text"], match_content["coefficient"], match_content["prediction"], match_content["date"]]
-    
-    for idx, cell in enumerate(user_defined_cells):
-        content = str(content_map[idx]); is_multiline = False
-        font_params = {}; text_color = '#FFFFFF'; shadow = '#444444'; outline = '#000000'
-
-        if cell['type'] == 'team_name': font_params = {'initial_font_size': 50, 'min_font_size': 18, 'max_lines': 3}; text_color = '#E0E0E0'
-        elif cell['type'] == 'vs_text': font_params = {'initial_font_size': 60, 'min_font_size': 30, 'max_lines': 1}; text_color = '#FFD700'
-        elif cell['type'] == 'coefficient': font_params = {'initial_font_size': 70, 'min_font_size': 30, 'max_lines': 1}; text_color = '#4CAF50'
-        elif cell['type'] == 'prediction': font_params = {'initial_font_size': 45, 'min_font_size': 16, 'max_lines': 7}; text_color = '#FFFFFF'; is_multiline = True
-        elif cell['type'] == 'date': font_params = {'initial_font_size': 25, 'min_font_size': 10, 'max_lines': 1}; text_color = '#AAAAAA'
-        elif cell['type'] == 'logo':
-            logo_path = content; team_name_placeholder = content_map[0] if idx == 2 else content_map[1]
-            try:
-                if os.path.exists(logo_path):
-                    logo_img = Image.open(logo_path).convert("RGBA"); logo_img.thumbnail((cell['w'], cell['h']), Image.Resampling.LANCZOS)
-                    pos_x = cell['x'] - logo_img.width // 2; pos_y = cell['y'] - logo_img.height // 2; shadow_pos = (pos_x + 3, pos_y + 3)
-                    image.paste((50,50,50), [shadow_pos[0], shadow_pos[1], shadow_pos[0]+logo_img.width, shadow_pos[1]+logo_img.height])
-                    image.paste(logo_img, (pos_x, pos_y), logo_img)
-                else: 
-                    draw.rectangle((cell['x']-cell['w']//2, cell['y']-cell['h']//2, cell['x']+cell['w']//2, cell['y']+cell['h']//2), fill=(70,70,70))
-                    font_obj, lines = get_font_for_cell(draw, team_name_placeholder, cell['w']-2*padding, cell['h']-2*padding, initial_font_size=30, max_lines=3)
-                    draw_text_with_effects(draw, "\n".join(lines), (cell['x'], cell['y']), font_obj, '#DDDDDD', shadow, outline, is_multiline=True)
-            except Exception as e: print(f"Ошибка лого '{logo_path}': {e}")
-            continue
+            base_img = Image.new("RGB", IMAGE_SIZE, DEFAULT_BACKGROUND_COLOR_1)
         
-        font, lines = get_font_for_cell(draw, content, cell['w']-2*padding, cell['h']-2*padding, **font_params)
-        draw_text_with_effects(draw, "\n".join(lines), (cell['x'], cell['y']), font, text_color, shadow, outline, is_multiline=is_multiline or len(lines)>1)
-    
-    try:
-        image.save(output_filename, quality=IMAGE_QUALITY)
-        print(f"Создано изображение: {output_filename}")
-    except Exception as e:
-        print(f"Ошибка сохранения {output_filename}: {e}")
+        draw = ImageDraw.Draw(base_img)
+        font_path = FONT_PATH
+        
+        # --- ЛОГОТИПЫ И НАЗВАНИЯ КОМАНД ---
+        team1_logo = open_image_safely(post_data["team1"]["logo_ref"]).resize((200, 200), Image.Resampling.LANCZOS)
+        team2_logo = open_image_safely(post_data["team2"]["logo_ref"]).resize((200, 200), Image.Resampling.LANCZOS)
+        
+        base_img.paste(team1_logo, (300, 250), team1_logo)
+        base_img.paste(team2_logo, (780, 250), team2_logo)
 
-# --- Генератор для экспресс-поста ---
-def create_express_image(express_content, background_path, output_filename):
-    image = None
-    if background_path and os.path.exists(background_path):
-        try:
-            image = Image.open(background_path).convert("RGB").resize(IMAGE_SIZE, Image.Resampling.LANCZOS)
-        except Exception as e: print(f"Ошибка фона: {e}")
-    if image is None:
-        image = create_gradient_bg(IMAGE_SIZE[0], IMAGE_SIZE[1], DEFAULT_BACKGROUND_COLOR_1, DEFAULT_BACKGROUND_COLOR_2)
-    
-    draw = ImageDraw.Draw(image)
-    padding = 40
-    
-    # ... (код отрисовки экспресса остается как в предыдущем ответе) ...
-    header_y_pos = 100
-    if express_content.get("express_title"):
-        font_title, lines_title = get_font_for_cell(draw, express_content["express_title"], IMAGE_SIZE[0] - 2*padding, 100, initial_font_size=60, min_font_size=30, max_lines=2)
-        draw_text_with_effects(draw, "\n".join(lines_title), (IMAGE_SIZE[0]/2, header_y_pos), font_title, '#FFD700', '#000000', '#000000', is_multiline=len(lines_title)>1)
-        header_y_pos += len(lines_title) * (font_title.size * 1.2)
-    font_date, _ = get_font_for_cell(draw, express_content["date"], 200, 40, initial_font_size=25, min_font_size=15, max_lines=1)
-    draw_text_with_effects(draw, express_content["date"], (IMAGE_SIZE[0]/2, header_y_pos), font_date, '#AAAAAA', '#000000', '#000000')
-    table_top_y = header_y_pos + 70; table_bottom_y = IMAGE_SIZE[1] - 200; table_height = table_bottom_y - table_top_y; table_width = IMAGE_SIZE[0] - 2 * padding
-    legs = express_content.get("legs", []); num_legs = len(legs)
-    if num_legs > 0:
-        row_height = table_height / num_legs; col_widths_percent = {'match': 0.60, 'bet': 0.25, 'coeff': 0.15}; line_color = (255, 255, 255, 50)
-        draw.line([(padding, table_top_y), (IMAGE_SIZE[0] - padding, table_top_y)], fill=line_color, width=2)
-        draw.line([(padding, table_bottom_y), (IMAGE_SIZE[0] - padding, table_bottom_y)], fill=line_color, width=2)
-        for i, leg in enumerate(legs):
-            row_y_center = table_top_y + (i * row_height) + row_height / 2
-            if i > 0: draw.line([(padding, table_top_y + i * row_height), (IMAGE_SIZE[0] - padding, table_top_y + i * row_height)], fill=line_color, width=1)
-            col_match_width = table_width * col_widths_percent['match']; col_match_x_start = padding
-            logo_h = int(row_height * 0.55); logo_w = logo_h; logo_y_pos = int(row_y_center - logo_h / 2)
-            try:
-                if os.path.exists(leg["team1_logo_ref"]):
-                    logo1 = Image.open(leg["team1_logo_ref"]).convert("RGBA"); logo1.thumbnail((logo_w, logo_h), Image.Resampling.LANCZOS)
-                    image.paste(logo1, (int(col_match_x_start + padding), logo_y_pos), logo1)
-                if os.path.exists(leg["team2_logo_ref"]):
-                    logo2 = Image.open(leg["team2_logo_ref"]).convert("RGBA"); logo2.thumbnail((logo_w, logo_h), Image.Resampling.LANCZOS)
-                    image.paste(logo2, (int(col_match_x_start + col_match_width - logo_w - padding), logo_y_pos), logo2)
-            except Exception as e: print(f"Ошибка лого в экспрессе: {e}")
-            teams_text = f"{leg['team1_name']} - {leg['team2_name']}"; teams_text_width_target = col_match_width - 2*logo_w - 4*padding
-            font_teams, lines_teams = get_font_for_cell(draw, teams_text, teams_text_width_target, row_height*0.8, initial_font_size=30, min_font_size=12, max_lines=2)
-            draw_text_with_effects(draw, "\n".join(lines_teams), (col_match_x_start + col_match_width/2, row_y_center), font_teams, '#FFFFFF', '#000000', '#000000', is_multiline=len(lines_teams)>1)
-            col_bet_width = table_width * col_widths_percent['bet']; col_bet_x_center = col_match_x_start + col_match_width + col_bet_width/2
-            bet_text = leg['bet_text']; font_bet, lines_bet = get_font_for_cell(draw, bet_text, col_bet_width - padding, row_height*0.8, initial_font_size=28, min_font_size=12, max_lines=3)
-            draw_text_with_effects(draw, "\n".join(lines_bet), (col_bet_x_center, row_y_center), font_bet, '#E0E0E0', '#000000', '#000000', is_multiline=len(lines_bet)>1)
-            col_coeff_width = table_width * col_widths_percent['coeff']; col_coeff_x_center = col_match_x_start + col_match_width + col_bet_width + col_coeff_width/2
-            coeff_text = leg['leg_coefficient']; font_coeff, _ = get_font_for_cell(draw, coeff_text, col_coeff_width - padding, row_height*0.8, initial_font_size=35, min_font_size=16, max_lines=1)
-            draw_text_with_effects(draw, coeff_text, (col_coeff_x_center, row_y_center), font_coeff, '#4CAF50', '#000000', '#000000')
-    footer_y_pos = table_bottom_y + (IMAGE_SIZE[1] - table_bottom_y) / 2
-    total_coeff_text = f"Общий коэффициент: {express_content['total_coefficient']}"; font_total_coeff, _ = get_font_for_cell(draw, total_coeff_text, table_width, 100, initial_font_size=50, min_font_size=25, max_lines=1)
-    draw_text_with_effects(draw, total_coeff_text, (IMAGE_SIZE[0]/2, footer_y_pos), font_total_coeff, '#FFD700', '#000000', '#000000')
+        font_teams = ImageFont.truetype(font_path, 60)
+        draw.text((IMAGE_SIZE[0]/2, 500), post_data["team1"]["name"], font=font_teams, fill="white", anchor="ms")
+        draw.text((IMAGE_SIZE[0]/2, 560), post_data["team2"]["name"], font=font_teams, fill="white", anchor="ms")
+
+        # --- ТЕКСТ "VS" ---
+        font_vs = ImageFont.truetype(font_path, 80)
+        draw.text((IMAGE_SIZE[0]/2, 350), post_data.get("vs_text", "VS"), font=font_vs, fill="yellow", anchor="mm")
+
+        # --- ПРОГНОЗ И КОЭФФИЦИЕНТ ---
+        prediction_text = post_data.get("prediction", "")
+        coefficient_text = post_data.get("coefficient", "")
+        
+        font_prediction = ImageFont.truetype(font_path, 55)
+        font_coefficient = ImageFont.truetype(font_path, 70)
+        
+        draw.text((IMAGE_SIZE[0]/2, 750), prediction_text, font=font_prediction, fill="white", anchor="ms")
+        draw.text((IMAGE_SIZE[0]/2, 850), coefficient_text, font=font_coefficient, fill="yellow", anchor="ms")
+        
+        # --- ДАТА ---
+        # ИЗМЕНЕНИЕ: Размер шрифта даты теперь 35, как в экспрессе
+        font_date = ImageFont.truetype(font_path, 35)
+        draw.text((IMAGE_SIZE[0]/2, 1000), post_data.get("date", ""), font=font_date, fill="white", anchor="ms")
+
+        # --- СОХРАНЕНИЕ ---
+        output_path = os.path.join(output_folder, filename)
+        base_img.convert("RGB").save(output_path, quality=IMAGE_QUALITY)
+        return True, output_path
+
+    except Exception as e:
+        print(f"Критическая ошибка при создании одиночного поста: {e}")
+        return False, str(e)
+
+
+def draw_express_post(post_data, output_folder, filename):
+    """Генерирует изображение для экспресса с новой версткой."""
     try:
-        image.save(output_filename, quality=IMAGE_QUALITY)
-        print(f"Создано изображение (экспресс): {output_filename}")
-    except Exception as e: print(f"Ошибка сохранения {output_filename}: {e}")
+        # --- ФОН ---
+        if post_data.get("background_path") and os.path.exists(post_data["background_path"]):
+            base_img = Image.open(post_data["background_path"]).convert("RGBA").resize(IMAGE_SIZE)
+        else:
+            base_img = Image.new("RGB", IMAGE_SIZE, DEFAULT_BACKGROUND_COLOR_1)
+
+        draw = ImageDraw.Draw(base_img)
+        font_path = FONT_PATH
+        
+        # --- ЗАГОЛОВОК И ДАТА ---
+        y_cursor = 100
+        express_title = post_data.get("express_title", "ЭКСПРЕСС")
+        font_title = ImageFont.truetype(font_path, 70)
+        draw.text((IMAGE_SIZE[0]/2, y_cursor), express_title, font=font_title, fill="yellow", anchor="ms")
+        y_cursor += 80
+
+        date_text = post_data.get("date", "")
+        font_date = ImageFont.truetype(font_path, 35)
+        draw.text((IMAGE_SIZE[0]/2, y_cursor), date_text, font=font_date, fill="white", anchor="ms")
+        y_cursor += 100
+
+        # --- ШРИФТЫ ДЛЯ СОБЫТИЙ ---
+        font_team_name = ImageFont.truetype(font_path, 38)
+        font_vs_small = ImageFont.truetype(font_path, 25) # Маленький шрифт для "VS"
+        font_bet_text = ImageFont.truetype(font_path, 40)
+        
+        # --- ОТРИСОВКА СОБЫТИЙ (ЛЕГОВ) ---
+        logo_size = (100, 100)
+        padding_between_elements = 20 # Отступ между лого и текстом
+        
+        for leg in post_data["legs"]:
+            # --- НОВАЯ ЛОГИКА ВЕРСТКИ ---
+            team1_logo = open_image_safely(leg["team1_logo_ref"]).resize(logo_size, Image.Resampling.LANCZOS)
+            team2_logo = open_image_safely(leg["team2_logo_ref"]).resize(logo_size, Image.Resampling.LANCZOS)
+            
+            # --- РАСЧЕТ РАЗМЕРОВ БЛОКА С НАЗВАНИЯМИ ---
+            t1_box = draw.textbbox((0,0), leg["team1_name"], font=font_team_name)
+            vs_box = draw.textbbox((0,0), "VS", font=font_vs_small)
+            t2_box = draw.textbbox((0,0), leg["team2_name"], font=font_team_name)
+
+            text_block_width = max(t1_box[2], vs_box[2], t2_box[2]) # Ширина блока равна самому длинному тексту
+            text_block_height = logo_size[1] # Высота текстового блока для простоты равна высоте лого
+
+            # --- РАСЧЕТ ОБЩЕЙ ШИРИНЫ И НАЧАЛЬНОЙ ТОЧКИ ДЛЯ ЦЕНТРИРОВАНИЯ ---
+            total_block_width = logo_size[0] + padding_between_elements + text_block_width + padding_between_elements + logo_size[0]
+            start_x = (IMAGE_SIZE[0] - total_block_width) / 2
+            
+            # --- ОТРИСОВКА ЭЛЕМЕНТОВ ---
+            # 1. Логотип команды 1
+            x_cursor = start_x
+            base_img.paste(team1_logo, (int(x_cursor), int(y_cursor)), team1_logo)
+            x_cursor += logo_size[0] + padding_between_elements
+
+            # 2. Блок с текстом (Команда1, VS, Команда2)
+            # Вертикальное выравнивание текста по центру относительно логотипа
+            text_y_start = y_cursor + (logo_size[1] - (t1_box[3] + vs_box[3] + t2_box[3])) / 2
+            
+            draw.text((x_cursor, text_y_start), leg["team1_name"], font=font_team_name, fill="white", anchor="lt")
+            draw.text((x_cursor + text_block_width / 2, text_y_start + t1_box[3] + 5), "VS", font=font_vs_small, fill="yellow", anchor="mt")
+            draw.text((x_cursor, text_y_start + t1_box[3] + vs_box[3] + 10), leg["team2_name"], font=font_team_name, fill="white", anchor="lt")
+            x_cursor += text_block_width + padding_between_elements
+
+            # 3. Логотип команды 2
+            base_img.paste(team2_logo, (int(x_cursor), int(y_cursor)), team2_logo)
+            
+            # --- СТАВКА ---
+            y_cursor += logo_size[1] + 15 # Перемещаем курсор вниз под логотипы
+            draw.text((IMAGE_SIZE[0]/2, y_cursor), leg["bet_text"], font=font_bet_text, fill="white", anchor="ms")
+            y_cursor += 70 # Отступ между событиями
+        
+        # --- ОБЩИЙ КОЭФФИЦИЕНТ ---
+        y_cursor = max(y_cursor, IMAGE_SIZE[1] - 150) # Убедимся, что коэфф. не уедет за экран
+        font_total_coeff = ImageFont.truetype(font_path, 80)
+        draw.text((IMAGE_SIZE[0]/2, y_cursor), post_data["total_coefficient"], font=font_total_coeff, fill="yellow", anchor="ms")
+        
+        # --- СОХРАНЕНИЕ ---
+        output_path = os.path.join(output_folder, filename)
+        base_img.convert("RGB").save(output_path, quality=IMAGE_QUALITY)
+        return True, output_path
+
+    except Exception as e:
+        print(f"Критическая ошибка при создании экспресса: {e}")
+        return False, str(e)
