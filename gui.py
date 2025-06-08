@@ -1,17 +1,16 @@
-# gui.py
-# Модуль, отвечающий за графический интерфейс (Tkinter).
-
+# gui.py (Версия с превью логотипов)
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import datetime
 import os
+from PIL import Image, ImageTk # Добавляем ImageTk для работы с изображениями в Tkinter
 
 # Импортируем нужные функции и данные из других модулей
 from config import LOGO_DIR, MAX_POSTS_IN_LIST, MAX_LEGS_IN_EXPRESS
 try:
     from team_mappings_fixed import TEAM_MAPPINGS
 except ImportError:
-    messagebox.showerror("Ошибка импорта", "Файл team_mappings_fixed.py не найден или TEAM_MAPPINGS не определен.")
+    messagebox.showerror("Ошибка импорта", "Файл team_mappings_fixed.py не найден.")
     TEAM_MAPPINGS = {}
 
 # Глобальные переменные для состояния GUI
@@ -19,146 +18,141 @@ match_data_list = []
 current_express_legs_buffer = []
 
 def create_main_gui(on_generate_callback):
-    root = tk.Tk()
-    root.title("Генератор постов v0.5")
-    root.geometry("700x850")
+    root = tk.Tk(); root.title("Генератор постов v0.6"); root.geometry("750x850") # Чуть шире для превью
     
     # --- Секция выбора типа поста ---
-    post_type_outer_frame = ttk.Frame(root, padding="10")
-    post_type_outer_frame.pack(pady=5, padx=10, fill="x")
+    post_type_outer_frame = ttk.Frame(root, padding="10"); post_type_outer_frame.pack(pady=5, padx=10, fill="x")
     ttk.Label(post_type_outer_frame, text="Выберите тип поста:").pack(side=tk.LEFT, padx=(0,10))
     post_type_var = tk.StringVar(value="Одиночный прогноз")
     post_type_combo = ttk.Combobox(post_type_outer_frame, textvariable=post_type_var, values=["Одиночный прогноз", "Экспресс"], state="readonly", width=25)
     post_type_combo.pack(side=tk.LEFT)
     
-    # --- Контейнер для основных форм ввода ---
-    input_forms_container = ttk.Frame(root, padding="5")
-    input_forms_container.pack(pady=5, padx=10, fill="both", expand=True)
+    input_forms_container = ttk.Frame(root, padding="5"); input_forms_container.pack(pady=5, padx=10, fill="both", expand=True)
 
     single_post_frame = ttk.Frame(input_forms_container, padding="10")
     express_post_frame = ttk.Frame(input_forms_container, padding="10")
 
-    # Словари для хранения виджетов
-    single_entries = {}
-    express_general_entries = {}
-    express_leg_entries = {}
+    single_entries = {}; express_general_entries = {}; express_leg_entries = {}
     team_names_for_combobox = sorted([name.capitalize() for name in TEAM_MAPPINGS.keys() if isinstance(name, str) and any(c.isalpha() for c in name)])
 
     # --- Вспомогательные функции, определенные до их использования ---
-    def select_background_file_action(entry_widget):
-        filepath = filedialog.askopenfilename(title="Выберите фон", filetypes=(("Изображения", "*.jpg *.jpeg *.png"),("Все файлы", "*.*")))
-        if filepath:
-            entry_widget.delete(0, tk.END)
-            entry_widget.insert(0, filepath)
-
     def update_combobox_filter(entry_widget, all_options):
         current_text = entry_widget.get().lower()
-        if current_text:
-            filtered_options = [opt for opt in all_options if current_text in opt.lower()]
-            entry_widget['values'] = filtered_options if filtered_options else all_options
-        else:
-            entry_widget['values'] = all_options
+        if current_text: filtered = [opt for opt in all_options if current_text in opt.lower()]; entry_widget['values'] = filtered if filtered else all_options
+        else: entry_widget['values'] = all_options
 
+    def select_background_file_action(entry_widget):
+        filepath = filedialog.askopenfilename(title="Выберите фон", filetypes=(("Изображения", "*.jpg *.jpeg *.png"),("Все файлы", "*.*")))
+        if filepath: entry_widget.delete(0, tk.END); entry_widget.insert(0, filepath)
+
+    # --- НОВАЯ ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ ПРЕВЬЮ ЛОГОТИПА ---
+    def update_logo_preview(entry_widget, label_widget):
+        team_name = entry_widget.get().strip()
+        if not team_name:
+            label_widget.config(image='')
+            return
+
+        logo_ref = get_logo_ref_for_team(team_name, silent=True) # silent=True чтобы не показывать messagebox
+        
+        if os.path.exists(logo_ref):
+            try:
+                # Открываем, изменяем размер, создаем PhotoImage
+                img = Image.open(logo_ref).convert("RGBA")
+                img.thumbnail((40, 40), Image.Resampling.LANCZOS)
+                photo_img = ImageTk.PhotoImage(img)
+                
+                # Обновляем виджет и сохраняем ссылку на изображение
+                label_widget.config(image=photo_img)
+                label_widget.image = photo_img # ВАЖНО: сохраняем ссылку, иначе сборщик мусора Python удалит картинку
+            except Exception as e:
+                print(f"Ошибка создания превью для {logo_ref}: {e}")
+                label_widget.config(image='')
+        else:
+            # Если логотип не найден, очищаем превью
+            label_widget.config(image='')
+            
     # --- Поля для ОДИНОЧНОГО прогноза ---
     single_fields_config = [
         ("Название команды 1", "team1_name", "Combobox_Team"),
         ("Название команды 2", "team2_name", "Combobox_Team"),
-        ("Текст VS", "vs_text", "Entry"),
-        ("Коэффициент", "coefficient", "Entry"),
-        ("Прогноз", "prediction", "Entry_Large"),
-        ("Дата", "date_single", "Entry"),
+        ("Текст VS", "vs_text", "Entry"), ("Коэффициент", "coefficient", "Entry"),
+        ("Прогноз", "prediction", "Entry_Large"), ("Дата", "date_single", "Entry"),
         ("Фон", "background_path_single", "Entry_File")
     ]
+    logo_preview_labels_single = {}
     for i, (label_text, key, widget_type) in enumerate(single_fields_config):
-        label = ttk.Label(single_post_frame, text=label_text + ":")
-        label.grid(row=i, column=0, padx=5, pady=6, sticky="w")
+        label = ttk.Label(single_post_frame, text=label_text + ":"); label.grid(row=i, column=0, padx=5, pady=6, sticky="w")
         if widget_type == "Combobox_Team":
             widget = ttk.Combobox(single_post_frame, width=35, values=team_names_for_combobox, state="normal")
             widget.bind('<KeyRelease>', lambda ev, e=widget, o=team_names_for_combobox: update_combobox_filter(e,o))
+            # Создаем и размещаем метку для превью лого
+            logo_preview_label = ttk.Label(single_post_frame, width=5)
+            logo_preview_label.grid(row=i, column=2, padx=5)
+            logo_preview_labels_single[key] = logo_preview_label
+            # Обновляем превью при потере фокуса или выборе из списка
+            widget.bind("<FocusOut>", lambda ev, e=widget, lbl=logo_preview_label: update_logo_preview(e, lbl))
+            widget.bind("<<ComboboxSelected>>", lambda ev, e=widget, lbl=logo_preview_label: update_logo_preview(e, lbl))
         elif widget_type == "Entry_File":
             widget = ttk.Entry(single_post_frame, width=38)
             browse_btn = ttk.Button(single_post_frame, text="Обзор...", command=lambda e=widget: select_background_file_action(e))
             browse_btn.grid(row=i, column=2, padx=(0,5), pady=6, sticky="w")
-        else:
-            widget = ttk.Entry(single_post_frame, width=38)
-        widget.grid(row=i, column=1, padx=5, pady=6, sticky="ew")
-        single_entries[key] = widget
+        else: widget = ttk.Entry(single_post_frame, width=38)
+        widget.grid(row=i, column=1, padx=5, pady=6, sticky="ew"); single_entries[key] = widget
     
     if "vs_text" in single_entries: single_entries["vs_text"].insert(0, "VS")
     if "date_single" in single_entries: single_entries["date_single"].insert(0, datetime.date.today().strftime("%d.%m.%Y"))
     
     # --- Поля для ЭКСПРЕССА ---
     express_general_fields_config = [
-        ("Заголовок экспресса (необяз.)", "express_title", "Entry"),
-        ("Общий коэффициент экспресса", "total_coefficient", "Entry"),
-        ("Дата экспресса", "date_express", "Entry"),
-        ("Фон для экспресса", "background_path_express", "Entry_File")
+        ("Заголовок экспресса", "express_title", "Entry"), ("Общий коэффициент", "total_coefficient", "Entry"),
+        ("Дата экспресса", "date_express", "Entry"), ("Фон для экспресса", "background_path_express", "Entry_File")
     ]
     for i, (label_text, key, widget_type) in enumerate(express_general_fields_config):
-        label = ttk.Label(express_post_frame, text=label_text + ":")
-        label.grid(row=i, column=0, padx=5, pady=6, sticky="w")
+        label = ttk.Label(express_post_frame, text=label_text + ":"); label.grid(row=i, column=0, padx=5, pady=6, sticky="w")
         if widget_type == "Entry_File":
             widget = ttk.Entry(express_post_frame, width=38)
-            browse_btn = ttk.Button(express_post_frame, text="Обзор...", command=lambda e=widget: select_background_file_action(e))
-            browse_btn.grid(row=i, column=2, padx=(0,5), pady=6, sticky="w")
-        else:
-            widget = ttk.Entry(express_post_frame, width=38)
-        widget.grid(row=i, column=1, padx=5, pady=6, sticky="ew")
-        express_general_entries[key] = widget
+            browse_btn = ttk.Button(express_post_frame, text="Обзор...", command=lambda e=widget: select_background_file_action(e)); browse_btn.grid(row=i, column=2, padx=(0,5), pady=6, sticky="w")
+        else: widget = ttk.Entry(express_post_frame, width=38)
+        widget.grid(row=i, column=1, padx=5, pady=6, sticky="ew"); express_general_entries[key] = widget
     if "date_express" in express_general_entries: express_general_entries["date_express"].insert(0, datetime.date.today().strftime("%d.%m.%Y"))
     
-    leg_frame = ttk.LabelFrame(express_post_frame, text="Добавить событие в экспресс", padding="10")
-    leg_frame.grid(row=len(express_general_fields_config), column=0, columnspan=3, pady=10, sticky="ew")
+    leg_frame = ttk.LabelFrame(express_post_frame, text="Добавить событие в экспресс", padding="10"); leg_frame.grid(row=len(express_general_fields_config), column=0, columnspan=3, pady=10, sticky="ew")
     leg_fields_config = [("Команда 1", "leg_team1_name", "Combobox_Team"), ("Команда 2", "leg_team2_name", "Combobox_Team"), ("Ставка", "leg_bet_text", "Entry"), ("Коэфф.", "leg_coefficient", "Entry")]
+    logo_preview_labels_express = {}
     for i, (label_text, key, widget_type) in enumerate(leg_fields_config):
-        label = ttk.Label(leg_frame, text=label_text + ":")
-        label.grid(row=i, column=0, padx=5, pady=4, sticky="w")
+        label = ttk.Label(leg_frame, text=label_text + ":"); label.grid(row=i, column=0, padx=5, pady=4, sticky="w")
         if widget_type == "Combobox_Team":
             widget = ttk.Combobox(leg_frame, width=30, values=team_names_for_combobox, state="normal")
             widget.bind('<KeyRelease>', lambda ev, e=widget, o=team_names_for_combobox: update_combobox_filter(e,o))
-        else:
-            widget = ttk.Entry(leg_frame, width=33)
-        widget.grid(row=i, column=1, padx=5, pady=4, sticky="ew")
-        express_leg_entries[key] = widget
-
-    add_leg_button = ttk.Button(leg_frame, text="➕ Добавить событие", command=lambda: add_leg_to_ui_buffer())
-    add_leg_button.grid(row=len(leg_fields_config), column=0, columnspan=2, pady=10)
+            # Создаем и размещаем метку для превью лого
+            logo_preview_label = ttk.Label(leg_frame, width=5)
+            logo_preview_label.grid(row=i, column=2, padx=5)
+            logo_preview_labels_express[key] = logo_preview_label
+            # Обновляем превью при потере фокуса или выборе из списка
+            widget.bind("<FocusOut>", lambda ev, e=widget, lbl=logo_preview_label: update_logo_preview(e, lbl))
+            widget.bind("<<ComboboxSelected>>", lambda ev, e=widget, lbl=logo_preview_label: update_logo_preview(e, lbl))
+        else: widget = ttk.Entry(leg_frame, width=33)
+        widget.grid(row=i, column=1, padx=5, pady=4, sticky="ew"); express_leg_entries[key] = widget
     
-    legs_display_frame = ttk.LabelFrame(express_post_frame, text=f"События в экспрессе (макс. {MAX_LEGS_IN_EXPRESS})", padding="10")
-    legs_display_frame.grid(row=len(express_general_fields_config)+1, column=0, columnspan=3, pady=10, sticky="ew")
-    columns = ("#", "team1", "team2", "bet", "coeff")
-    legs_treeview = ttk.Treeview(legs_display_frame, columns=columns, show="headings", height=5)
-    legs_treeview.heading("#", text="№"); legs_treeview.column("#", width=30, anchor='center')
-    legs_treeview.heading("team1", text="Команда 1"); legs_treeview.column("team1", width=120)
-    legs_treeview.heading("team2", text="Команда 2"); legs_treeview.column("team2", width=120)
-    legs_treeview.heading("bet", text="Ставка"); legs_treeview.column("bet", width=150)
-    legs_treeview.heading("coeff", text="Коэфф."); legs_treeview.column("coeff", width=70, anchor='center')
-    legs_treeview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar = ttk.Scrollbar(legs_display_frame, orient="vertical", command=legs_treeview.yview)
-    scrollbar.pack(side=tk.RIGHT, fill="y")
-    legs_treeview.configure(yscrollcommand=scrollbar.set)
+    add_leg_button = ttk.Button(leg_frame, text="➕ Добавить событие", command=lambda: add_leg_to_ui_buffer()); add_leg_button.grid(row=len(leg_fields_config), column=0, columnspan=2, pady=10)
     
-    remove_leg_button = ttk.Button(express_post_frame, text="➖ Удалить выбранное событие", command=lambda: remove_selected_leg_from_ui_buffer())
-    remove_leg_button.grid(row=len(express_general_fields_config)+2, column=0, columnspan=3, pady=5)
+    legs_display_frame = ttk.LabelFrame(express_post_frame, text=f"События в экспрессе (макс. {MAX_LEGS_IN_EXPRESS})", padding="10"); legs_display_frame.grid(row=len(express_general_fields_config)+1, column=0, columnspan=3, pady=10, sticky="ew")
+    columns = ("#", "team1", "team2", "bet", "coeff"); legs_treeview = ttk.Treeview(legs_display_frame, columns=columns, show="headings", height=5)
+    legs_treeview.heading("#", text="№"); legs_treeview.column("#", width=30, anchor='center'); legs_treeview.heading("team1", text="Команда 1"); legs_treeview.column("team1", width=120); legs_treeview.heading("team2", text="Команда 2"); legs_treeview.column("team2", width=120); legs_treeview.heading("bet", text="Ставка"); legs_treeview.column("bet", width=150); legs_treeview.heading("coeff", text="Коэфф."); legs_treeview.column("coeff", width=70, anchor='center')
+    legs_treeview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True); scrollbar = ttk.Scrollbar(legs_display_frame, orient="vertical", command=legs_treeview.yview); scrollbar.pack(side=tk.RIGHT, fill="y"); legs_treeview.configure(yscrollcommand=scrollbar.set)
+    remove_leg_button = ttk.Button(express_post_frame, text="➖ Удалить выбранное событие", command=lambda: remove_selected_leg_from_ui_buffer()); remove_leg_button.grid(row=len(express_general_fields_config)+2, column=0, columnspan=3, pady=5)
     
-    status_frame = ttk.Frame(root, padding="10")
-    status_frame.pack(pady=10, padx=10, fill="x")
-    match_count_list_label = ttk.Label(status_frame, text="Добавлено постов в список: 0")
-    match_count_list_label.pack(side=tk.LEFT)
+    status_frame = ttk.Frame(root, padding="10"); status_frame.pack(pady=10, padx=10, fill="x")
+    match_count_list_label = ttk.Label(status_frame, text="Добавлено постов в список: 0"); match_count_list_label.pack(side=tk.LEFT)
     
-    action_buttons_frame = ttk.Frame(root, padding="10")
-    action_buttons_frame.pack(pady=10, padx=10, fill="x")
-    main_add_button = ttk.Button(action_buttons_frame, text="Добавить 'Одиночный прогноз' в список", command=lambda: add_current_post_to_list())
-    main_add_button.pack(side=tk.LEFT, padx=5, expand=True, fill="x")
-    generate_all_button = ttk.Button(action_buttons_frame, text="Создать все изображения", command=lambda: on_generate_callback(match_data_list, root))
-    generate_all_button.pack(side=tk.LEFT, padx=5, expand=True, fill="x")
+    action_buttons_frame = ttk.Frame(root, padding="10"); action_buttons_frame.pack(pady=10, padx=10, fill="x")
+    main_add_button = ttk.Button(action_buttons_frame, text="Добавить 'Одиночный прогноз' в список", command=lambda: add_current_post_to_list()); main_add_button.pack(side=tk.LEFT, padx=5, expand=True, fill="x")
+    generate_all_button = ttk.Button(action_buttons_frame, text="Создать все изображения", command=lambda: on_generate_callback(match_data_list, root)); generate_all_button.pack(side=tk.LEFT, padx=5, expand=True, fill="x")
     
-    example_button_single = ttk.Button(single_post_frame, text="Заполнить пример", command=lambda: fill_with_single_example())
-    example_button_single.grid(row=len(single_fields_config), column=0, columnspan=2, pady=10)
-    example_button_express = ttk.Button(express_general_entries["express_title"].master, text="Заполнить пример", command=lambda: fill_with_express_example())
-    example_button_express.grid(row=len(express_general_fields_config), column=0, columnspan=2, pady=20)
-
-    # --- Функции логики GUI ---
+    example_button_single = ttk.Button(single_post_frame, text="Заполнить пример", command=lambda: fill_with_single_example()); example_button_single.grid(row=len(single_fields_config), column=0, columnspan=2, pady=10)
+    example_button_express = ttk.Button(express_general_entries["express_title"].master, text="Заполнить пример", command=lambda: fill_with_express_example()); example_button_express.grid(row=len(express_general_fields_config), column=0, columnspan=2, pady=20)
+    
+    # --- Логика GUI (функции) ---
     def update_legs_treeview():
         for i in legs_treeview.get_children(): legs_treeview.delete(i)
         for idx, leg_data in enumerate(current_express_legs_buffer): legs_treeview.insert("", "end", iid=str(idx), values=(idx + 1, leg_data["team1_name"], leg_data["team2_name"], leg_data["bet_text"], leg_data["leg_coefficient"]))
@@ -169,15 +163,15 @@ def create_main_gui(on_generate_callback):
         if selected_type == "Одиночный прогноз": single_post_frame.pack(fill="both", expand=True); express_post_frame.pack_forget(); main_add_button.config(text="Добавить 'Одиночный прогноз' в список")
         elif selected_type == "Экспресс": single_post_frame.pack_forget(); express_post_frame.pack(fill="both", expand=True); main_add_button.config(text="Добавить 'Экспресс' в список")
 
-    def get_logo_ref_for_team(team_name_original):
+    def get_logo_ref_for_team(team_name_original, silent=False):
         team_name_lower = team_name_original.lower()
         logo_filename = TEAM_MAPPINGS.get(team_name_lower)
         if logo_filename:
             full_logo_path = os.path.join(LOGO_DIR, logo_filename)
             if os.path.exists(full_logo_path):
-                print(f"ОК: Логотип для '{team_name_original}' найден: {full_logo_path}")
                 return full_logo_path
-        print(f"ПРЕДУПРЕЖДЕНИЕ: Логотип для '{team_name_original}' не найден. Используется плейсхолдер.")
+            elif not silent: messagebox.showwarning("Файл не найден", f"Файл логотипа '{logo_filename}' не найден в папке {LOGO_DIR}.")
+        elif not silent: messagebox.showwarning("Сопоставление не найдено", f"Для команды '{team_name_original}' не найдено сопоставление.")
         return team_name_original
 
     def add_leg_to_ui_buffer():
@@ -227,6 +221,9 @@ def create_main_gui(on_generate_callback):
             if key in single_entries: single_entries[key].delete(0, tk.END)
         single_entries["team1_name"].set("Спартак"); single_entries["team2_name"].set("Зенит")
         single_entries["coefficient"].insert(0, "2.55"); single_entries["prediction"].insert(0, "Победа Спартака или ничья (1X)")
+        # Автоматически обновляем превью для примера
+        update_logo_preview(single_entries["team1_name"], logo_preview_labels_single["team1_name"])
+        update_logo_preview(single_entries["team2_name"], logo_preview_labels_single["team2_name"])
 
     def fill_with_express_example():
         global current_express_legs_buffer; current_express_legs_buffer = []
@@ -234,9 +231,9 @@ def create_main_gui(on_generate_callback):
             if key in express_general_entries: express_general_entries[key].delete(0, tk.END)
         express_general_entries["express_title"].insert(0, "Экспресс на выходные"); express_general_entries["total_coefficient"].insert(0, "7.45")
         example_legs = [
-            {"team1_name": "Реал Мадрид", "team1_logo_ref": TEAM_MAPPINGS.get("real madrid", "Реал Мадрид"), "team2_name": "Барселона", "team2_logo_ref": TEAM_MAPPINGS.get("барселона", "Барселона"), "bet_text": "Обе забьют - Да", "leg_coefficient": "1.65"},
-            {"team1_name": "Ливерпуль", "team1_logo_ref": TEAM_MAPPINGS.get("ливерпуль", "Ливерпуль"), "team2_name": "Манчестер Сити", "team2_logo_ref": TEAM_MAPPINGS.get("манчестер сити", "Манчестер Сити"), "bet_text": "Тотал Больше 2.5", "leg_coefficient": "1.70"},
-            {"team1_name": "Бавария", "team1_logo_ref": TEAM_MAPPINGS.get("бавария", "Бавария"), "team2_name": "Боруссия Д", "team2_logo_ref": TEAM_MAPPINGS.get("дортмунд", "Боруссия Д"), "bet_text": "П1", "leg_coefficient": "1.50"}
+            {"team1_name": "Реал Мадрид", "team1_logo_ref": get_logo_ref_for_team("Реал Мадрид", silent=True), "team2_name": "Барселона", "team2_logo_ref": get_logo_ref_for_team("Барселона", silent=True), "bet_text": "Обе забьют - Да", "leg_coefficient": "1.65"},
+            {"team1_name": "Ливерпуль", "team1_logo_ref": get_logo_ref_for_team("Ливерпуль", silent=True), "team2_name": "Манчестер Сити", "team2_logo_ref": get_logo_ref_for_team("Манчестер Сити", silent=True), "bet_text": "Тотал Больше 2.5", "leg_coefficient": "1.70"},
+            {"team1_name": "Бавария", "team1_logo_ref": get_logo_ref_for_team("Бавария", silent=True), "team2_name": "Боруссия Д", "team2_logo_ref": get_logo_ref_for_team("дортмунд", silent=True), "bet_text": "П1", "leg_coefficient": "1.50"}
         ]
         current_express_legs_buffer.extend(example_legs[:MAX_LEGS_IN_EXPRESS]); update_legs_treeview()
     

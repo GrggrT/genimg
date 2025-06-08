@@ -1,38 +1,4 @@
-# team_mappings_fixed.py (ФИНАЛЬНАЯ ВЕРСИЯ)
-import os
-from config import LOGO_DIR # Импортируем путь к логотипам из вашего конфига
-
-def get_auto_mappings_from_folder():
-    """
-    Сканирует папку LOGO_DIR и создает базовый словарь сопоставлений.
-    Ключ: имя файла без расширения, в нижнем регистре.
-    Значение: полное имя файла.
-    Например: {"real madrid": "Real Madrid.png"}
-    """
-    auto_mappings = {}
-    if not os.path.isdir(LOGO_DIR):
-        print(f"ОШИБКА: Папка с логотипами не найдена по пути: {LOGO_DIR}")
-        return auto_mappings
-        
-    valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
-    for filename in os.listdir(LOGO_DIR):
-        if filename.lower().endswith(valid_extensions):
-            # Ключ: имя файла без расширения, в нижнем регистре.
-            team_name_key = os.path.splitext(filename)[0].lower()
-            if team_name_key not in auto_mappings:
-                auto_mappings[team_name_key] = filename
-            
-    print(f"Найдено {len(auto_mappings)} логотипов при автоматическом сканировании папки.")
-    return auto_mappings
-
-def get_manual_aliases():
-    """
-    Ваш словарь с ручными псевдонимами. 
-    Здесь вы можете добавлять любые альтернативные названия для команд.
-    Ключ - псевдоним в нижнем регистре, который вы вводите в GUI.
-    Значение - ключ из автосканирования (имя файла без расширения, в нижнем регистре).
-    """
-    aliases = {
+RUSSIAN_TO_ENGLISH_ALIASES = {
     '07-вестник': '07-vestur',
     'aab': 'aab',
     'ab': 'ab',
@@ -1374,29 +1340,4 @@ def get_manual_aliases():
     'яблонец': 'jablonec',
     'явор': 'javor',
     'ягеллония': 'jagiellonia',
-    }
-    print(f"Загружено {len(aliases)} ручных псевдонимов.")
-    return aliases
-
-def create_final_mappings():
-    """
-    Объединяет все сопоставления. Ручные псевдонимы имеют приоритет.
-    """
-    auto_generated = get_auto_mappings_from_folder()
-    manual = get_manual_aliases()
-    
-    final_mappings = auto_generated.copy() # Начинаем с автоматически найденных
-    
-    # Добавляем русские псевдонимы, ссылаясь на уже существующие записи
-    for russian_alias, english_key in manual.items():
-        if english_key in auto_generated:
-            # Например, создаем запись "спартак": "Spartak Moscow.png"
-            final_mappings[russian_alias] = auto_generated[english_key]
-        else:
-            print(f"Предупреждение: для псевдонима '{russian_alias}' не найден логотип с ключом '{english_key}'")
-
-    print(f"Сформирован итоговый словарь TEAM_MAPPINGS из {len(final_mappings)} записей.")
-    return final_mappings
-
-# --- Итоговый словарь, который будет импортироваться в другие модули ---
-TEAM_MAPPINGS = create_final_mappings()
+}
